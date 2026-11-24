@@ -4,6 +4,7 @@
  */
 
 import { createLogger } from '../lib/logger.js';
+import { modelService } from '../services/model-service.js';
 import {
   ANTIGRAVITY_ENDPOINT,
   ANTIGRAVITY_HEADERS,
@@ -221,6 +222,16 @@ export class OpenAIToAntigravityAdapter {
 
     // Claude models always use Antigravity
     if (lower.includes('claude')) {
+      return 'antigravity';
+    }
+
+    // Dynamically discovered Antigravity models (e.g. gemini-3-*, gemini-4-*, gpt-oss-*)
+    if (
+      modelService.isKnownAntigravityModel(model) ||
+      lower.startsWith('gpt-') ||
+      lower.startsWith('gemini-3') ||
+      lower.startsWith('gemini-4')
+    ) {
       return 'antigravity';
     }
 

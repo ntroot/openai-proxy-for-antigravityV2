@@ -81,23 +81,16 @@ async function main() {
         expires: result.expires,
       };
 
-      const manager = new AccountManager(authDetails, stored);
-      
-      // If we got an email, update the account with it (AccountManager constructor might not set it if it just added from auth)
-      // The constructor logic for adding new accounts is a bit implicit. 
-      // Let's ensure we save.
-      
-      // Ideally we'd have a clean addAccount method, but for now relying on the constructor 
-      // with authFallback is how the original plugin did it.
-      
-      // We can also manually update the email if needed
-      const accounts = manager.getAccounts();
-      const newAccount = accounts.find(a => a.parts.refreshToken === result.refresh.split('|')[0]);
-      if (newAccount && result.email) {
-        newAccount.email = result.email;
-      }
+      const manager = new AccountManager(undefined, stored);
+      manager.addOrUpdateAccount({
+        email: result.email,
+        refresh: result.refresh,
+        access: result.access,
+        expires: result.expires,
+        projectId: result.projectId || undefined,
+      });
 
-      await manager.saveToDisk();
+      await manager.saveToDisk({ overwrite: true });
       
       console.log('');
       console.log('✅ Account saved successfully!');

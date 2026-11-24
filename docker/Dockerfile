@@ -6,7 +6,7 @@ WORKDIR /app
 COPY package*.json ./
 
 # Install dependencies
-RUN npm ci
+RUN if [ -f package-lock.json ]; then npm ci; else npm install; fi
 
 # Copy source code
 COPY tsconfig.json ./
@@ -29,7 +29,7 @@ COPY package.json ./
 VOLUME ["/app/config"]
 
 # Expose port
-EXPOSE 3000
+EXPOSE 3000 51121
 
 # Health check
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \

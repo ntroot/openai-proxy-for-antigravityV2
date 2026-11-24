@@ -91,10 +91,28 @@ export interface ManagedAccount {
   cooldownReason?: CooldownReason;
   touchedForQuota: Record<string, number>;
   consecutiveFailures?: number;
+  allowedModels?: string[];
 }
 
 function nowMs(): number {
   return Date.now();
+}
+
+export function isModelAllowedForAccount(
+  account: ManagedAccount,
+  model?: string | null,
+): boolean {
+  if (!model) {
+    return true;
+  }
+  if (account.allowedModels === undefined) {
+    return true;
+  }
+  const normalized = model.replace(/^antigravity-/, "").replace(/:antigravity$/, "");
+  return account.allowedModels.some((allowed) => {
+    const normalizedAllowed = allowed.replace(/^antigravity-/, "").replace(/:antigravity$/, "");
+    return allowed === model || normalizedAllowed === normalized;
+  });
 }
 
 function clampNonNegativeInt(value: unknown, fallback: number): number {
@@ -233,6 +251,7 @@ export class AccountManager {
             lastSwitchReason: acc.lastSwitchReason,
             coolingDownUntil: acc.coolingDownUntil,
             cooldownReason: acc.cooldownReason,
+            allowedModels: Array.isArray(acc.allowedModels) ? [...acc.allowedModels] : undefined,
             touchedForQuota: {},
           };
         })
@@ -308,7 +327,12 @@ export class AccountManager {
   }
 
   getAccountsSnapshot(): ManagedAccount[] {
-    return this.accounts.map((a) => ({ ...a, parts: { ...a.parts }, rateLimitResetTimes: { ...a.rateLimitResetTimes } }));
+    return this.accounts.map((a) => ({
+      ...a,
+      parts: { ...a.parts },
+      rateLimitResetTimes: { ...a.rateLimitResetTimes },
+      allowedModels: a.allowedModels !== undefined ? [...a.allowedModels] : undefined,
+    }));
   }
 
   getCurrentAccountForFamily(family: ModelFamily): ManagedAccount | null {
@@ -359,7 +383,9 @@ export class AccountManager {
       const healthTracker = getHealthTracker();
       const tokenTracker = getTokenTracker();
       
-      const accountsWithMetrics: AccountWithMetrics[] = this.accounts.map(acc => {
+      const accountsWithMetrics: AccountWithMetrics[] = this.accounts
+        .filter(acc => isModelAllowedForAccount(acc, model))
+        .map(acc => {
         clearExpiredRateLimits(acc);
         return {
           index: acc.index,
@@ -397,7 +423,7 @@ export class AccountManager {
     if (current) {
       clearExpiredRateLimits(current);
       const isLimitedForRequestedStyle = isRateLimitedForHeaderStyle(current, family, headerStyle, model);
-      if (!isLimitedForRequestedStyle && !this.isAccountCoolingDown(current)) {
+      if (isModelAllowedForAccount(current, model) && !isLimitedForRequestedStyle && !this.isAccountCoolingDown(current)) {
         current.lastUsed = nowMs();
         this.markTouchedForQuota(current, quotaKey);
         return current;
@@ -415,7 +441,7 @@ export class AccountManager {
   getNextForFamily(family: ModelFamily, model?: string | null, headerStyle: HeaderStyle = "antigravity"): ManagedAccount | null {
     const available = this.accounts.filter((a) => {
       clearExpiredRateLimits(a);
-      return !isRateLimitedForHeaderStyle(a, family, headerStyle, model) && !this.isAccountCoolingDown(a);
+      return isModelAllowedForAccount(a, model) && !isRateLimitedForHeaderStyle(a, family, headerStyle, model) && !this.isAccountCoolingDown(a);
     });
 
     if (available.length === 0) {
@@ -646,11 +672,95 @@ export class AccountManager {
     return waitTimes.length > 0 ? Math.min(...waitTimes) : 0;
   }
 
+  hasEligibleAccountForModel(model: string): boolean {
+    return this.accounts.some((acc) => isModelAllowedForAccount(acc, model));
+  }
+
+  addOrUpdateAccount(input: {
+    email?: string;
+    refresh: string;
+    access?: string;
+    expires?: number;
+    projectId?: string;
+    allowedModels?: string[];
+  }): ManagedAccount {
+    const parts = parseRefreshParts(input.refresh);
+    if (input.projectId && !parts.projectId) {
+      parts.projectId = input.projectId;
+    }
+
+    const normalizedEmail = input.email?.trim().toLowerCase();
+    const existing = this.accounts.find((acc) => {
+      if (normalizedEmail && acc.email && acc.email.trim().toLowerCase() === normalizedEmail) {
+        return true;
+      }
+      return acc.parts.refreshToken === parts.refreshToken;
+    });
+
+    const now = nowMs();
+    if (existing) {
+      existing.email = input.email ?? existing.email;
+      existing.parts = {
+        refreshToken: parts.refreshToken,
+        projectId: parts.projectId || existing.parts.projectId,
+        managedProjectId: parts.managedProjectId || existing.parts.managedProjectId,
+      };
+      existing.access = input.access ?? existing.access;
+      existing.expires = input.expires ?? existing.expires;
+      if (input.allowedModels !== undefined) {
+        existing.allowedModels = [...input.allowedModels];
+      }
+      this.clearAccountCooldown(existing);
+      return existing;
+    }
+
+    const newAccount: ManagedAccount = {
+      index: this.accounts.length,
+      email: input.email,
+      addedAt: now,
+      lastUsed: 0,
+      parts,
+      access: input.access,
+      expires: input.expires,
+      rateLimitResetTimes: {},
+      touchedForQuota: {},
+      allowedModels: input.allowedModels !== undefined ? [...input.allowedModels] : undefined,
+    };
+
+    this.accounts.push(newAccount);
+
+    if (this.currentAccountIndexByFamily.claude < 0) {
+      this.currentAccountIndexByFamily.claude = 0;
+    }
+    if (this.currentAccountIndexByFamily.gemini < 0) {
+      this.currentAccountIndexByFamily.gemini = 0;
+    }
+
+    return newAccount;
+  }
+
+  setAllowedModels(accountIndex: number, allowedModels: string[] | undefined): ManagedAccount | null {
+    const account = this.accounts[accountIndex];
+    if (!account) {
+      return null;
+    }
+    account.allowedModels = allowedModels !== undefined ? [...allowedModels] : undefined;
+    return account;
+  }
+
+  removeAccountByIndex(accountIndex: number): boolean {
+    const account = this.accounts[accountIndex];
+    if (!account) {
+      return false;
+    }
+    return this.removeAccount(account);
+  }
+
   getAccounts(): ManagedAccount[] {
     return [...this.accounts];
   }
 
-  async saveToDisk(): Promise<void> {
+  async saveToDisk(options?: { overwrite?: boolean }): Promise<void> {
     const claudeIndex = Math.max(0, this.currentAccountIndexByFamily.claude);
     const geminiIndex = Math.max(0, this.currentAccountIndexByFamily.gemini);
     
@@ -667,6 +777,7 @@ export class AccountManager {
         rateLimitResetTimes: Object.keys(a.rateLimitResetTimes).length > 0 ? a.rateLimitResetTimes : undefined,
         coolingDownUntil: a.coolingDownUntil,
         cooldownReason: a.cooldownReason,
+        allowedModels: a.allowedModels !== undefined ? [...a.allowedModels] : undefined,
       })),
       activeIndex: claudeIndex,
       activeIndexByFamily: {
@@ -675,7 +786,7 @@ export class AccountManager {
       },
     };
 
-    await saveAccounts(storage);
+    await saveAccounts(storage, options);
   }
 
   requestSaveToDisk(): void {

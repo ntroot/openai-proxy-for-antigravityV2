@@ -1,66 +1,34 @@
 /**
- * Models route - Lists available models
+ * Models route - Lists available models (dynamically fetched from Antigravity API)
  * GET /v1/models
  */
 
 import type { FastifyInstance } from 'fastify';
+import type { ProxyModelDefinition } from '../lib/models.js';
+import { modelService } from '../services/model-service.js';
 
-const AVAILABLE_MODELS = [
-  {
-    id: 'antigravity-gemini-3-pro',
-    object: 'model',
-    created: 1700000000,
-    owned_by: 'google-antigravity',
-  },
-  {
-    id: 'antigravity-gemini-3-flash',
-    object: 'model',
-    created: 1700000000,
-    owned_by: 'google-antigravity',
-  },
-  {
-    id: 'antigravity-claude-sonnet-4-5',
-    object: 'model',
-    created: 1700000000,
-    owned_by: 'google-antigravity',
-  },
-  {
-    id: 'antigravity-claude-sonnet-4-5-thinking',
-    object: 'model',
-    created: 1700000000,
-    owned_by: 'google-antigravity',
-  },
-  {
-    id: 'antigravity-claude-opus-4-5-thinking',
-    object: 'model',
-    created: 1700000000,
-    owned_by: 'google-antigravity',
-  },
-  {
-    id: 'gemini-2.5-flash',
-    object: 'model',
-    created: 1700000000,
-    owned_by: 'google-gemini-cli',
-  },
-  {
-    id: 'gemini-2.5-pro',
-    object: 'model',
-    created: 1700000000,
-    owned_by: 'google-gemini-cli',
-  },
-];
+function toOpenAIModel(model: ProxyModelDefinition) {
+  return {
+    id: model.id,
+    object: model.object,
+    created: model.created,
+    owned_by: model.owned_by,
+  };
+}
 
 export default async function modelsRoutes(server: FastifyInstance) {
   server.get('/models', async () => {
+    const catalog = await modelService.getCatalogModels();
     return {
       object: 'list',
-      data: AVAILABLE_MODELS,
+      data: catalog.models.map(toOpenAIModel),
     };
   });
 
   server.get('/models/:model', async (request: any) => {
-    const model = AVAILABLE_MODELS.find(m => m.id === request.params.model);
-    
+    const catalog = await modelService.getCatalogModels();
+    const model = catalog.models.find((m) => m.id === request.params.model);
+
     if (!model) {
       return {
         error: {
@@ -70,6 +38,6 @@ export default async function modelsRoutes(server: FastifyInstance) {
       };
     }
 
-    return model;
+    return toOpenAIModel(model);
   });
 }

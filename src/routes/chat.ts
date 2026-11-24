@@ -61,6 +61,16 @@ export default async function chatRoutes(server: FastifyInstance) {
         const account = await accountService.getNextAccount(openaiReq.model);
 
         if (!account) {
+          const hasEligible = await accountService.hasEligibleAccountForModel(openaiReq.model);
+          if (!hasEligible) {
+            return reply.status(400).send({
+              error: {
+                message: `No account is configured to allow model '${openaiReq.model}'. Enable it in the Admin Dashboard.`,
+                type: 'invalid_request_error',
+              },
+            });
+          }
+
           return reply.status(429).send({
             error: {
               message: 'All accounts are rate-limited. Please try again later.',

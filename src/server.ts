@@ -11,6 +11,7 @@ import { dirname, join } from 'path';
 
 import { createLogger, setLogLevel } from './lib/logger.js';
 import { accountService } from './services/account-manager.js';
+import { oauthService } from './services/oauth-service.js';
 
 import chatRoutes from './routes/chat.js';
 import modelsRoutes from './routes/models.js';
@@ -155,6 +156,7 @@ async function main() {
     log.info(`Received ${signal}, shutting down gracefully...`);
     
     try {
+      await oauthService.shutdown();
       await server.close();
       log.info('Server closed');
       process.exit(0);

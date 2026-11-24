@@ -36,7 +36,10 @@
     </section>
 
     <section class="accounts-section">
-      <h2>Accounts</h2>
+      <div class="section-header">
+        <h2>Accounts</h2>
+        <button onclick="openAddAccountModal()" class="btn btn-primary">+ Add Account</button>
+      </div>
       <div id="accountsContainer">
         <p class="loading">Loading accounts...</p>
       </div>
@@ -81,6 +84,126 @@
       </div>
     </div>
   </div>
+
+  <!-- Add Account Modal -->
+  <div id="addAccountModal" class="modal">
+    <div class="modal-content modal-md">
+      <div class="modal-header">
+        <h3>Add Google Account</h3>
+        <span class="close-btn" onclick="closeAddAccountModal()">&times;</span>
+      </div>
+      <div class="modal-body">
+        <p class="modal-description">
+          Connect a Google account via OAuth. Once authorized, the account is added to the running proxy immediately without a restart.
+        </p>
+
+        <div class="form-group">
+          <label for="oauthProjectId">Google Cloud Project ID <span class="muted">(optional)</span></label>
+          <input
+            type="text"
+            id="oauthProjectId"
+            class="filter-input full-width"
+            placeholder="Leave empty to auto-detect"
+          >
+        </div>
+
+        <div class="form-group">
+          <label class="checkbox-toggle">
+            <input type="checkbox" id="addAccountAllModels" checked onchange="toggleAddAccountModels()">
+            <span>Allow all models for this account</span>
+          </label>
+          <div id="addAccountModelsList" class="model-checklist hidden"></div>
+        </div>
+
+        <div id="oauthStatusBox" class="oauth-status hidden"></div>
+
+        <div id="oauthManualFallback" class="manual-fallback hidden">
+          <details>
+            <summary>Browser didn't redirect automatically? Paste callback URL</summary>
+            <div class="manual-fallback-row">
+              <input
+                type="text"
+                id="manualCallbackUrl"
+                class="filter-input"
+                placeholder="http://localhost:51121/oauth-callback?code=...&state=..."
+              >
+              <button onclick="completeManualOAuth()" class="btn btn-sm">Complete</button>
+            </div>
+          </details>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button onclick="closeAddAccountModal()" class="btn btn-secondary">Close</button>
+        <button id="startOAuthBtn" onclick="startAddAccountOAuth()" class="btn btn-primary">
+          Sign in with Google
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Account Model Selection Modal -->
+  <div id="modelsModal" class="modal">
+    <div class="modal-content modal-lg">
+      <div class="modal-header">
+        <h3 id="modelsModalTitle">Model Selection</h3>
+        <span class="close-btn" onclick="closeModelsModal()">&times;</span>
+      </div>
+      <div class="modal-body">
+        <div class="models-meta-bar">
+          <div id="modelsSourceBadge" class="models-source-info"></div>
+          <button type="button" id="refreshModelsBtn" class="btn btn-sm" onclick="refreshAccountModels()">
+            ↻ Refresh Models
+          </button>
+        </div>
+
+        <p class="modal-description">
+          Choose which models this account is allowed to serve. Requests for unselected models will be routed to other eligible accounts.
+        </p>
+
+        <div class="models-toolbar">
+          <label class="checkbox-toggle">
+            <input type="checkbox" id="editAccountAllModels" onchange="toggleEditAccountAllModels()">
+            <span>Allow all models (default)</span>
+          </label>
+          <div class="models-quick-actions" id="editModelsQuickActions">
+            <button type="button" class="btn btn-sm" onclick="selectAllEditModels(true)">Select All</button>
+            <button type="button" class="btn btn-sm" onclick="selectAllEditModels(false)">Clear All</button>
+          </div>
+        </div>
+
+        <div class="models-search-row">
+          <input
+            type="text"
+            id="modelsSearchInput"
+            class="filter-input"
+            placeholder="Filter models by name, ID, or provider..."
+            oninput="renderEditModelsList()"
+          >
+        </div>
+
+        <div id="editModelsList" class="model-checklist">
+          <p class="muted">Fetching live models...</p>
+        </div>
+
+        <div id="customModelRow" class="custom-model-row">
+          <input
+            type="text"
+            id="customModelInput"
+            class="filter-input"
+            placeholder="Add custom model ID (e.g. antigravity-gemini-3-pro)"
+            onkeydown="if(event.key==='Enter'){event.preventDefault();addCustomModelId();}"
+          >
+          <button type="button" class="btn btn-sm" onclick="addCustomModelId()">+ Add Custom</button>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button onclick="closeModelsModal()" class="btn btn-secondary">Cancel</button>
+        <button id="saveModelsBtn" onclick="saveAccountModels()" class="btn btn-primary">Save Models</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="toast" class="toast hidden"></div>
 
   <script src="/admin/static/app.js"></script>
 </body>

@@ -185,6 +185,7 @@ export interface AccountMetadataV3 {
   rateLimitResetTimes?: RateLimitStateV3;
   coolingDownUntil?: number;
   cooldownReason?: CooldownReason;
+  allowedModels?: string[];
 }
 
 export interface AccountStorageV3 {
@@ -282,6 +283,7 @@ function mergeAccountStorage(
           // Preserve manually configured projectId/managedProjectId if not in incoming
           projectId: acc.projectId ?? existingAcc.projectId,
           managedProjectId: acc.managedProjectId ?? existingAcc.managedProjectId,
+          allowedModels: "allowedModels" in acc ? acc.allowedModels : existingAcc.allowedModels,
           rateLimitResetTimes: {
             ...existingAcc.rateLimitResetTimes,
             ...acc.rateLimitResetTimes,
@@ -521,14 +523,17 @@ export async function loadAccounts(): Promise<AccountStorageV3 | null> {
   }
 }
 
-export async function saveAccounts(storage: AccountStorageV3): Promise<void> {
+export async function saveAccounts(
+  storage: AccountStorageV3,
+  options?: { overwrite?: boolean },
+): Promise<void> {
   const path = getStoragePath();
   const configDir = dirname(path);
   await fs.mkdir(configDir, { recursive: true });
   await ensureGitignore(configDir);
 
   await withFileLock(path, async () => {
-    const existing = await loadAccountsUnsafe();
+    const existing = options?.overwrite ? null : await loadAccountsUnsafe();
     const merged = existing ? mergeAccountStorage(existing, storage) : storage;
 
     const tempPath = `${path}.${randomBytes(6).toString("hex")}.tmp`;
