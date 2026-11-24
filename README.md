@@ -26,14 +26,24 @@
 ### 🌟 Key Features
 
 - **🔌 OpenAI Compatibility**: Drop-in replacement for any tool expecting an OpenAI-like API.
-- **🔐 Standalone Authentication**: Built-in OAuth wizard to securely connect your Google account.
-- **🔄 Multi-Account Rotation**: Automatically rotates between multiple Google accounts to maximize quota.
+- **🔐 Dashboard & CLI OAuth Authentication**: Connect or remove Google accounts directly from the Admin Dashboard (`+ Add Account`) with no container restart required (includes manual callback URL fallback), or use the CLI wizard (`npm run auth`).
+- **🎯 Dynamic Model Discovery & Per-Account Model Selection**: Live-fetches available models and real-time remaining quotas per account via `/v1internal:fetchAvailableModels`, lets you restrict which models each account can serve, filter models, and add custom model IDs.
+- **🔄 Multi-Account Rotation**: Automatically rotates between multiple eligible Google accounts to maximize quota.
 - **⚡ Smart Rate Limiting**: Detects 429 errors and switches accounts instantly.
-- **📊 Admin Dashboard**: Web UI to monitor uptime, requests, and token usage.
+- **📊 Admin Dashboard**: Web UI to manage accounts, configure per-account models & quotas, and monitor uptime, requests, and logs.
+- **🐳 Windows & Docker Desktop Ready**: Automatically mounts `%APPDATA%\antigravity-proxy` on Windows (`~/.config/antigravity-proxy` on macOS/Linux) and exposes port `51121` for in-dashboard OAuth callbacks.
 
 ---
 
 ## 🤖 Supported Models
+
+Models are **discovered dynamically** per connected account via Google's `/v1internal:fetchAvailableModels` endpoint (with automatic 5-minute caching and fallback to the default list when offline).
+
+- **`GET /v1/models`** returns the live merged catalog of available models from your connected account(s).
+- **`GET /admin/api/accounts/:index/models`** returns live models along with capabilities (`maxTokens`, `Thinking`, `Vision`) and **real-time remaining quota percentages** for each account.
+- Per-account model restrictions configured in the Admin Dashboard are enforced automatically across all rotation strategies (`hybrid`, `sticky`, `round-robin`).
+
+Default fallback models when no live account is queried yet:
 
 | Model Name | Status | Capabilities |
 |------------|--------|--------------|
@@ -77,19 +87,18 @@
 
 If you prefer keeping your host clean:
 
-1.  **Authenticate (One-time setup)**
-    We need to generate the credentials file on your host machine first so Docker can mount it.
+1.  **Build & Run with Docker Compose**
     ```bash
-    npm run auth
+    docker compose -f docker/docker-compose.yml up -d --build
     ```
+    *Exposes port `3000` (API + Admin Dashboard) and port `51121` (in-dashboard Google OAuth callback). Automatically mounts `%APPDATA%\antigravity-proxy` on Windows or `~/.config/antigravity-proxy` on macOS/Linux.*
 
-2.  **Run with Docker Compose**
-    ```bash
-    npm run docker:up
-    ```
+2.  **Connect Google Account(s)**
+    Open **[http://localhost:3000/admin](http://localhost:3000/admin)** and click **+ Add Account** to sign in with Google directly from the browser (no restart needed).  
+    *(Alternatively, you can still authenticate via CLI with `npm run auth`.)*
 
-    To view logs: `npm run docker:logs`
-    To stop: `npm run docker:down`
+    To view logs: `docker compose -f docker/docker-compose.yml logs -f`  
+    To stop: `docker compose -f docker/docker-compose.yml down`
 
 ---
 
@@ -154,9 +163,28 @@ We provide a helper script to generate the exact JSON configuration needed for Z
 
 Visit **[http://localhost:3000/admin](http://localhost:3000/admin)** to access the dashboard.
 
+- **Accounts Management**:
+  - Click **+ Add Account** to connect new Google accounts via OAuth directly from the web UI (includes optional Google Cloud Project ID, initial model selection, and manual callback URL fallback).
+  - Remove accounts with one click — changes take effect immediately without restarting the server.
+- **Dynamic Per-Account Model Selection & Quotas**:
+  - Click **Models** on any account row to view the live models available to that account from Antigravity API along with each model's **remaining quota percentage** and context limits.
+  - Toggle **Allow all models** or select specific models per account, search/filter models, refresh live data (**↻ Refresh Models**), or add custom model IDs (**+ Add Custom**).
 - **Status**: Check if your accounts are active or rate-limited.
 - **Metrics**: View success rates and average response times.
-- **Logs**: Inspect recent requests for debugging.
+- **Logs**: Inspect recent requests and responses for debugging.
+
+### Admin API Endpoints
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| `GET` | `/admin/api/accounts` | List connected accounts, rate-limit status, and allowed models |
+| `POST` | `/admin/api/accounts/oauth/start` | Start a Google OAuth flow and local callback server |
+| `GET` | `/admin/api/accounts/oauth/status/:sessionId` | Poll OAuth session status |
+| `POST` | `/admin/api/accounts/oauth/complete` | Complete OAuth manually using a callback URL or `code`/`state` |
+| `GET` | `/admin/api/accounts/:index/models` | Fetch live models & quotas for a specific account (`?refresh=true` supported) |
+| `PUT` | `/admin/api/accounts/:index/models` | Update `allowedModels` (`string[]` or `null` for all models) |
+| `DELETE` | `/admin/api/accounts/:index` | Remove an account from memory and disk |
+| `GET` | `/admin/api/models` | Fetch merged live model catalog (`?refresh=true` supported) |
 
 ---
 
@@ -179,6 +207,7 @@ You can customize the proxy via `.env` file or environment variables:
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `PORT` | `3000` | HTTP Server port |
+| `OAUTH_CALLBACK_PORT` | `51121` | Local callback port for in-dashboard Google OAuth |
 | `LOG_LEVEL` | `info` | Logging verbosity (`debug`, `info`, `error`) |
 | `CONFIG_DIR` | `~/.config/antigravity-proxy` | Custom path for credentials storage |
 | `ADMIN_ENABLED` | `true` | Enable/Disable the web dashboard |
@@ -199,7 +228,7 @@ This software is a proxy tool intended for personal, educational, and internal d
 
 ## 📜 License
 
-**Author:** [Alessandro Bruno](https://github.com/alessandrobrunoh)  
+**Author:** [Alessandro Bruno](https://github.com/alessandrobrunoh) & [NTRooT](https://github.com/ntroot)  
 **License:** MIT
 
 ---
